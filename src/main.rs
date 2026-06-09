@@ -5,6 +5,22 @@ use std::str::SplitWhitespace;
 
 use fork::{fork, Fork, waitpid};
 
+fn git_branch() -> Option<String> {
+    let output = Command::new("git")
+        .arg("branch")
+        .output()
+        .ok()?;
+    if output.status.success() {
+        let mut branch = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        if branch.len() > 1 {
+            branch = branch[2..].to_string() + " ";
+        }
+        Some(branch)
+    } else {
+        None
+    }
+}
+
 fn parse_quotes(t: &str, input: &mut SplitWhitespace) -> String {
     let mut arg = t[1..].to_string();
     loop {
@@ -22,6 +38,12 @@ fn parse_quotes(t: &str, input: &mut SplitWhitespace) -> String {
         }
     }
     arg
+}
+
+fn change_dir(path: &str) {
+    if let Err(e) = std::env::set_current_dir(path) {
+        eprintln!("cd: {}: {}", path, e);
+    }
 }
 
 fn parse_arg(input: &mut SplitWhitespace) -> Option<String> {
@@ -59,6 +81,15 @@ fn parse_command(input: &str) -> Option<Command> {
     let mut iter = args.iter();
 
     iter.next().map(|prog| {
+        if prog == "cd" {
+            if let Some(path) = iter.next() {
+                change_dir(path);
+            } else {
+                eprintln!("cd: missing operand");
+            }
+            //return a dummy command that does nothing
+            return Command::new("true");
+        }
         let mut command = Command::new(prog);
         while let Some(arg) = iter.next() {
             command.arg(arg);
@@ -87,7 +118,7 @@ fn run_command(command: &mut Command) {
 
 /// Prompts the user for input
 fn prompt() {
-    print!("> ");
+    print!("{}> ", git_branch().unwrap_or_default());
     io::Write::flush(&mut io::stdout()).expect("Failed to flush stdout");
 }
 fn main() {
